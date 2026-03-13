@@ -20,6 +20,7 @@
     <script src="https://unpkg.com/feather-icons"></script>
 
     <link rel="stylesheet" href="style.css" />
+    <link rel="stylesheet" href="gallery.css" />
   </head>
   <body>
     <div id="model-status-overlay" class="status-overlay hidden">
@@ -177,35 +178,48 @@
           </button>
         </section>
 
-        <!-- Right Column: Results -->
-        <section class="results-panel glass-panel">
-          <div class="result-placeholder" id="result-placeholder">
-            <div class="placeholder-icon">
-              <i data-feather="image"></i>
+        <!-- Right Column: Results & History -->
+        <div class="results-column">
+          <section class="results-panel glass-panel">
+            <div class="result-placeholder" id="result-placeholder">
+              <div class="placeholder-icon">
+                <i data-feather="image"></i>
+              </div>
+              <p>Your creation will appear here</p>
             </div>
-            <p>Your creation will appear here</p>
-          </div>
 
-          <div class="result-container hidden" id="result-container">
-            <img id="result-image" alt="Generated result" />
-            <div class="result-actions">
-              <button
-                id="download-btn"
-                class="action-btn"
-                aria-label="Download image"
-              >
-                <i data-feather="download"></i>
-              </button>
-              <button
-                id="fullscreen-btn"
-                class="action-btn"
-                aria-label="Fullscreen image"
-              >
-                <i data-feather="maximize"></i>
-              </button>
+            <div class="result-container hidden" id="result-container">
+              <img id="result-image" alt="Generated result" />
+              <div class="result-actions">
+                <button
+                  id="download-btn"
+                  class="action-btn"
+                  aria-label="Download image"
+                >
+                  <i data-feather="download"></i>
+                </button>
+                <button
+                  id="fullscreen-btn"
+                  class="action-btn"
+                  aria-label="Fullscreen image"
+                >
+                  <i data-feather="maximize"></i>
+                </button>
+              </div>
             </div>
-          </div>
-        </section>
+          </section>
+
+          <!-- History Gallery -->
+          <section class="gallery-panel glass-panel">
+            <div class="gallery-header">
+              <h3><i data-feather="layers"></i> History</h3>
+              <button id="clear-history" class="text-btn">Clear</button>
+            </div>
+            <div id="gallery-grid" class="gallery-grid">
+              <!-- History items will be injected here -->
+            </div>
+          </section>
+        </div>
       </div>
     </main>
 

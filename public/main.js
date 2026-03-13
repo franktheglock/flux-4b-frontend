@@ -170,6 +170,60 @@ document.addEventListener("DOMContentLoaded", () => {
   const resultImage = document.getElementById("result-image");
   const downloadBtn = document.getElementById("download-btn");
   const fullscreenBtn = document.getElementById("fullscreen-btn");
+  
+  // History Logic
+  const galleryGrid = document.getElementById("gallery-grid");
+  const clearHistoryBtn = document.getElementById("clear-history");
+  let history = JSON.parse(localStorage.getItem("flux_history") || "[]");
+
+  function saveHistory() {
+    // Keep only last 20 items to save localStorage space (base64 is large)
+    if (history.length > 20) history = history.slice(0, 20);
+    localStorage.setItem("flux_history", JSON.stringify(history));
+  }
+
+  function renderHistory() {
+    galleryGrid.innerHTML = history.length === 0 
+      ? '<div class="gallery-empty">No history yet</div>' 
+      : "";
+    
+    history.forEach((item, index) => {
+      const el = document.createElement("div");
+      el.className = "gallery-item";
+      el.innerHTML = `
+        <img src="${item.image}" alt="History image">
+        <div class="gallery-overlay">
+          <div class="gallery-info">
+            <p class="history-prompt">${item.prompt}</p>
+            <div class="history-meta">
+              <span>Steps: ${item.steps}</span>
+              <span>Guidance: ${item.guidance}</span>
+              ${item.seed != -1 ? `<span>Seed: ${item.seed}</span>` : ""}
+            </div>
+          </div>
+        </div>
+      `;
+      el.addEventListener("click", () => {
+        resultImage.src = item.image;
+        resultPlaceholder.classList.add("hidden");
+        resultContainer.classList.remove("hidden");
+        // Scroll to top of results
+        resultContainer.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      });
+      galleryGrid.appendChild(el);
+    });
+  }
+
+  clearHistoryBtn.addEventListener("click", () => {
+    if (confirm("Clear image history?")) {
+      history = [];
+      saveHistory();
+      renderHistory();
+    }
+  });
+
+  // Initial render
+  renderHistory();
 
   async function handleGenerate() {
     const prompt = document.getElementById("prompt").value.trim();
@@ -235,6 +289,20 @@ document.addEventListener("DOMContentLoaded", () => {
         resultImage.src = data.image; // This is a base64 string
         resultPlaceholder.classList.add("hidden");
         resultContainer.classList.remove("hidden");
+
+        // Save to History
+        const currentItem = {
+          image: data.image,
+          prompt: prompt,
+          steps: document.getElementById("steps").value,
+          guidance: document.getElementById("guidance").value,
+          seed: document.getElementById("seed").value,
+          timestamp: Date.now()
+        };
+        history.unshift(currentItem);
+        saveHistory();
+        renderHistory();
+
       } else {
         throw new Error(data.message || "Failed to generate image");
       }
