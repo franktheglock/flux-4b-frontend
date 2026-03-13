@@ -1,0 +1,232 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      name="description"
+      content="A beautiful and aesthetic interface for the FLUX.2-klein-4B model. Generate and edit images with power."
+    />
+    <title>FLUX.2-klein-4B Studio</title>
+    <!-- Outfit font for modern aesthetic -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+
+    <!-- Feather Icons for lightweight, sharp iconography -->
+    <script src="https://unpkg.com/feather-icons"></script>
+
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <div id="model-status-overlay" class="status-overlay hidden">
+        <div class="status-card">
+            <i data-feather="download-cloud" class="loading-icon"></i>
+            <h3>Downloading Model Assets</h3>
+            <p id="status-message">Initializing...</p>
+            <div class="status-progress-bar">
+                <div id="status-progress-fill" class="progress-fill"></div>
+            </div>
+        </div>
+    </div>
+
+    <div class="background-effects">
+      <div class="glow-orb orb-1"></div>
+      <div class="glow-orb orb-2"></div>
+      <div class="glow-orb orb-3"></div>
+    </div>
+
+    <main class="app-container">
+      <header class="app-header">
+        <div class="logo">
+          <i data-feather="zap"></i>
+          <h1><span class="gradient-text">FLUX.2</span>-klein-4B</h1>
+        </div>
+        <div class="mode-toggle">
+          <button
+            class="mode-btn active"
+            id="btn-t2i"
+            aria-label="Text to Image"
+          >
+            Text to Image
+          </button>
+          <button class="mode-btn" id="btn-i2i" aria-label="Image to Image">
+            Image to Image
+          </button>
+        </div>
+      </header>
+
+      <div class="content-wrapper">
+        <!-- Left Column: Controls -->
+        <section class="controls-panel glass-panel">
+          <!-- Prompt Input -->
+          <div class="control-group">
+            <label for="prompt">Prompt</label>
+            <div class="textarea-wrapper">
+              <textarea
+                id="prompt"
+                placeholder="A futuristic cyberpunk city at night, highly detailed, neon pink and cyans..."
+                rows="4"
+              ></textarea>
+            </div>
+          </div>
+
+          <!-- Init Image (Hidden by default, shown in I2I mode) -->
+          <div class="control-group hidden" id="init-image-group">
+            <label>Conditioning Image</label>
+            <div class="upload-area" id="upload-area">
+              <i data-feather="upload-cloud"></i>
+              <p>Drag & drop or <span>browse</span></p>
+              <input type="file" id="image-upload" accept="image/*" class="hidden-input">
+              <img id="upload-preview" class="upload-preview hidden" alt="Uploaded preview">
+              <button class="clear-upload hidden" id="clear-upload" title="Remove image">
+                <i data-feather="x"></i>
+              </button>
+            </div>
+            <small></small>
+          </div>
+
+          <!-- Reference Image (Optional, hidden by default) -->
+          <div class="control-group hidden" id="ref-image-group">
+            <label>Reference Image (Optional)</label>
+            <div class="upload-area" id="ref-upload-area">
+              <i data-feather="plus"></i>
+              <p>Drag & drop or <span>browse</span></p>
+              <input type="file" id="ref-image-upload" accept="image/*" class="hidden-input">
+              <img id="ref-upload-preview" class="upload-preview hidden" alt="Reference preview">
+              <button class="clear-upload hidden" id="clear-ref-upload" title="Remove image">
+                <i data-feather="x"></i>
+              </button>
+            </div>
+          </div>
+
+          <!-- Basic Settings -->
+          <div class="settings-grid">
+            <div class="control-group t2i-only">
+              <label for="width"
+                >Width
+                <span class="val-display" id="val-width">1024</span></label
+              >
+              <input
+                type="range"
+                id="width"
+                min="256"
+                max="2048"
+                step="64"
+                value="1024"
+              />
+            </div>
+
+            <div class="control-group t2i-only">
+              <label for="height"
+                >Height
+                <span class="val-display" id="val-height">1024</span></label
+              >
+              <input
+                type="range"
+                id="height"
+                min="256"
+                max="2048"
+                step="64"
+                value="1024"
+              />
+            </div>
+
+            <div class="control-group">
+              <label for="steps"
+                >Steps <span class="val-display" id="val-steps">28</span></label
+              >
+              <input
+                type="range"
+                id="steps"
+                min="1"
+                max="100"
+                step="1"
+                value="28"
+              />
+            </div>
+
+            <div class="control-group">
+              <label for="guidance"
+                >Guidance Scale
+                <span class="val-display" id="val-guidance">3.5</span></label
+              >
+              <input
+                type="range"
+                id="guidance"
+                min="1.0"
+                max="20.0"
+                step="0.1"
+                value="3.5"
+              />
+            </div>
+
+            <div class="control-group full-width">
+              <label for="seed">Seed (-1 for random)</label>
+              <input type="number" id="seed" value="-1" class="number-input" />
+            </div>
+          </div>
+
+          <!-- Generate Button -->
+          <button id="generate-btn" class="generate-btn">
+            <span class="btn-text">Generate Image</span>
+            <i data-feather="loader" class="spinner hidden"></i>
+          </button>
+        </section>
+
+        <!-- Right Column: Results -->
+        <section class="results-panel glass-panel">
+          <div class="result-placeholder" id="result-placeholder">
+            <div class="placeholder-icon">
+              <i data-feather="image"></i>
+            </div>
+            <p>Your creation will appear here</p>
+          </div>
+
+          <div class="result-container hidden" id="result-container">
+            <img id="result-image" alt="Generated result" />
+            <div class="result-actions">
+              <button
+                id="download-btn"
+                class="action-btn"
+                aria-label="Download image"
+              >
+                <i data-feather="download"></i>
+              </button>
+              <button
+                id="fullscreen-btn"
+                class="action-btn"
+                aria-label="Fullscreen image"
+              >
+                <i data-feather="maximize"></i>
+              </button>
+            </div>
+          </div>
+        </section>
+      </div>
+    </main>
+
+    <!-- Fullscreen Modal -->
+    <div class="modal hidden" id="fullscreen-modal">
+      <button class="close-modal" id="close-modal">
+        <i data-feather="x"></i>
+      </button>
+      <img id="modal-image" class="modal-image" alt="Fullscreen View" />
+    </div>
+
+    <!-- Error Toast -->
+    <div class="toast hidden" id="error-toast">
+      <i data-feather="alert-circle"></i>
+      <span id="toast-message">An error occurred</span>
+    </div>
+
+    <script src="main.js"></script>
+    <script>
+      // Initialize Feather icons
+      feather.replace();
+    </script>
+  </body>
+</html>

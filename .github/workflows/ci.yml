@@ -1,0 +1,39 @@
+name: CI
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.12'
+      - name: Install minimal deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install fastapi uvicorn
+      - name: Lint (optional)
+        run: |
+          pip install flake8 || true
+          flake8 || true
+      - name: Run basic import check
+        run: |
+          python - <<'PY'
+import importlib
+import sys
+try:
+    importlib.import_module('fastapi')
+    importlib.import_module('uvicorn')
+    print('basic imports ok')
+except Exception as e:
+    print('import error', e)
+    sys.exit(1)
+PY

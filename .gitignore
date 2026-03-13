@@ -1,0 +1,44 @@
+# Python
+venv/
+.env
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+*.egg-info/
+.eggs/
+dist/
+build/
+.cache/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDEs
+.vscode/
+.idea/
+
+# Caches and downloads
+cache/
+cache/*
+cache/huggingface/
+cache/tmp/
+cache/pip/
+
+# FastAPI/uvicorn logs
+*.log
+
+# Notebook checkpoints
+.ipynb_checkpoints/
+
+# Static build artifacts
+public/*.map
+
+# dotenv
+.env
+
+# Others
+*.sqlite3
+*.db
