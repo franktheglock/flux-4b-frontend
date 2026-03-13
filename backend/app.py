@@ -23,7 +23,8 @@ def read_root():
 model_status = {
     "loaded": False,
     "status": "loading", # start in loading state for UI
-    "message": "Waiting for dependency installation to complete..."
+    "message": "Waiting for dependency installation to complete...",
+    "progress": {"step": 0, "total": 0}
 }
 
 pipe = None
@@ -118,7 +119,11 @@ async def startup_event():
 
 @app.get("/api/model-status")
 def get_model_status():
-    return JSONResponse(model_status)
+    # Include generating status for the frontend polling
+    status = model_status.copy()
+    status["is_generating"] = model_status.get("progress", {}).get("total", 0) > 0 and \
+                              model_status["progress"].get("step", 0) < model_status["progress"].get("total", 0)
+    return JSONResponse(status)
 
 def check_model_ready():
     if not model_status["loaded"]:
@@ -127,70 +132,100 @@ def check_model_ready():
         raise HTTPException(status_code=503, detail="Model is still loading. Please wait.")
 
 @app.post("/api/generate")
-async def generate_image(
+def generate_image(
     prompt: str = Form(...),
-    num_inference_steps: int = Form(28),
+    num_inference_steps: int = Form(8),
     guidance_scale: float = Form(3.5),
     width: int = Form(1024),
     height: int = Form(1024),
-    seed: int = Form(-1)
+    seed: int = Form(-1),
+    num_images_per_prompt: int = Form(1)
 ):
     try:
         check_model_ready()
         import torch
         
+        model_status["progress"] = {"step": 0, "total": num_inference_steps}
+
+        def step_callback(step, timestep, latents):
+            model_status["progress"]["step"] = step + 1
+            print(f"Sampling Step: {step+1}/{num_inference_steps}")
+
         generator = torch.Generator(device="cuda")
         if seed != -1:
             generator.manual_seed(seed)
         else:
             generator.seed()
 
-        print(f"Generating image for prompt: '{prompt}'")
-        image = pipe(
-            prompt=prompt,
-            num_inference_steps=num_inference_steps,
-            guidance_scale=guidance_scale,
-            width=width,
-            height=height,
-            generator=generator
-        ).images[0]
+        print(f"Generating {num_images_per_prompt} variation(s) for prompt: '{prompt}'")
+        # Ensure callback is passed as the correct key for this diffusers version
+        # Some versions use 'callback_on_step_end' while others use 'callback'
+        kwargs = {
+            "prompt": prompt,
+            "num_inference_steps": num_inference_steps,
+            "guidance_scale": guidance_scale,
+            "width": width,
+            "height": height,
+            "generator": generator,
+            "num_images_per_prompt": num_images_per_prompt
+        }
         
-        # Convert image to base64
-        buffered = io.BytesIO()
-        image.save(buffered, format="PNG")
-        img_str = base64.b64encode(buffered.getvalue()).decode("utf-8")
+        # Try different callback formats based on common diffusers pipeline signatures
+        if hasattr(pipe, "_callback_tensor_inputs"):
+            # Newer callback system (callback_on_step_end) expects (pipe, step, timestep, callback_kwargs)
+            def wrap_callback(pipeline, step, timestep, callback_kwargs):
+                step_callback(step, timestep, None)
+                return callback_kwargs
+            kwargs["callback_on_step_end"] = wrap_callback
+        else:
+            kwargs["callback"] = step_callback
+            kwargs["callback_steps"] = 1
+
+        output = pipe(**kwargs)
+        
+        images_base64 = []
+        for image in output.images:
+            buffered = io.BytesIO()
+            image.save(buffered, format="PNG")
+            img_str = base64.b64encode(buffered.getvalue()).decode("utf-8")
+            images_base64.append(f"data:image/png;base64,{img_str}")
         
         # Free up RAM/VRAM
         import gc
         gc.collect()
         torch.cuda.empty_cache()
         
-        return JSONResponse({"status": "success", "image": f"data:image/png;base64,{img_str}"})
+        return JSONResponse({
+            "status": "success", 
+            "images": images_base64,
+            "image": images_base64[0] # Back-compat
+        })
 
     except Exception as e:
         return JSONResponse({"status": "error", "message": str(e)}, status_code=500)
 
 @app.post("/api/edit")
-async def edit_image(
+def edit_image(
     prompt: str = Form(...),
     image: UploadFile = File(...),
     reference_image: UploadFile = File(None),
     num_inference_steps: int = Form(28),
     strength: float = Form(0.8),
     guidance_scale: float = Form(3.5),
-    seed: int = Form(-1)
+    seed: int = Form(-1),
+    num_images_per_prompt: int = Form(1)
 ):
     try:
         check_model_ready()
         
         # Read the primary uploaded image
-        contents = await image.read()
+        contents = image.file.read()
         init_image, width, height = normalize_condition_image(Image.open(io.BytesIO(contents)))
         
         # Read the reference image if provided
         images_list = [init_image]
         if reference_image is not None and reference_image.filename:
-            ref_contents = await reference_image.read()
+            ref_contents = reference_image.file.read()
             ref_img, _, _ = normalize_condition_image(
                 Image.open(io.BytesIO(ref_contents)),
                 target_size=(width, height)
@@ -204,31 +239,52 @@ async def edit_image(
         else:
             generator.seed()
             
-        # `Flux2KleinPipeline` accepts conditioning images directly, but it does
-        # not expose a Stable-Diffusion-style `strength` parameter.
-        # Keep accepting the form field for frontend compatibility and ignore it.
-        print(f"Editing image for prompt: '{prompt}' (Images provided: {len(images_list)})")
-        result_image = pipe(
-            prompt=prompt,
-            image=images_list,
-            width=width,
-            height=height,
-            num_inference_steps=num_inference_steps,
-            guidance_scale=guidance_scale,
-            generator=generator
-        ).images[0]
+        print(f"Editing image for prompt: '{prompt}' (Variations: {num_images_per_prompt})")
         
-        # Convert image to base64
-        buffered = io.BytesIO()
-        result_image.save(buffered, format="PNG")
-        img_str = base64.b64encode(buffered.getvalue()).decode("utf-8")
+        model_status["progress"] = {"step": 0, "total": num_inference_steps}
+        def step_callback(step, timestep, latents):
+            model_status["progress"]["step"] = step + 1
+            print(f"Sampling Step: {step+1}/{num_inference_steps}")
+
+        kwargs = {
+            "prompt": prompt,
+            "image": init_image if len(images_list) == 1 else images_list,
+            "width": width,
+            "height": height,
+            "num_inference_steps": num_inference_steps,
+            "guidance_scale": guidance_scale,
+            "generator": generator,
+            "num_images_per_prompt": num_images_per_prompt
+        }
+        
+        if hasattr(pipe, "_callback_tensor_inputs"):
+            def wrap_callback_edit(pipeline, step, timestep, callback_kwargs):
+                step_callback(step, timestep, None)
+                return callback_kwargs
+            kwargs["callback_on_step_end"] = wrap_callback_edit
+        else:
+            kwargs["callback"] = step_callback
+            kwargs["callback_steps"] = 1
+
+        output = pipe(**kwargs)
+        
+        images_base64 = []
+        for res_image in output.images:
+            buffered = io.BytesIO()
+            res_image.save(buffered, format="PNG")
+            img_str = base64.b64encode(buffered.getvalue()).decode("utf-8")
+            images_base64.append(f"data:image/png;base64,{img_str}")
         
         # Free up RAM/VRAM
         import gc
         gc.collect()
         torch.cuda.empty_cache()
         
-        return JSONResponse({"status": "success", "image": f"data:image/png;base64,{img_str}"})
+        return JSONResponse({
+            "status": "success", 
+            "images": images_base64,
+            "image": images_base64[0]
+        })
 
     except Exception as e:
         return JSONResponse({"status": "error", "message": str(e)}, status_code=500)

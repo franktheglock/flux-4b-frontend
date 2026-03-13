@@ -8,19 +8,19 @@
       content="A beautiful and aesthetic interface for the FLUX.2-klein-4B model. Generate and edit images with power."
     />
     <title>FLUX.2-klein-4B Studio</title>
-    <!-- Outfit font for modern aesthetic -->
+    <!-- Editorial display + technical body typography -->
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
-      href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap"
+      href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600;9..144,700&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap"
       rel="stylesheet"
     />
 
     <!-- Feather Icons for lightweight, sharp iconography -->
     <script src="https://unpkg.com/feather-icons"></script>
 
-    <link rel="stylesheet" href="style.css" />
-    <link rel="stylesheet" href="gallery.css" />
+    <link rel="stylesheet" href="style.css?v=5" />
+    <link rel="stylesheet" href="gallery.css?v=3" />
   </head>
   <body>
     <div id="model-status-overlay" class="status-overlay hidden">
@@ -44,7 +44,10 @@
       <header class="app-header">
         <div class="logo">
           <i data-feather="zap"></i>
-          <h1><span class="gradient-text">FLUX.2</span>-klein-4B</h1>
+          <div class="brand-copy">
+            <p class="eyebrow">Local image atelier</p>
+            <h1><span class="gradient-text">FLUX.2</span>-klein-4B</h1>
+          </div>
         </div>
         <div class="mode-toggle">
           <button
@@ -87,7 +90,7 @@
                 <i data-feather="x"></i>
               </button>
             </div>
-            <small></small>
+            <small class="helper-copy">Use a clean source image for stronger structural continuity.</small>
           </div>
 
           <!-- Reference Image (Optional, hidden by default) -->
@@ -106,16 +109,39 @@
 
           <!-- Basic Settings -->
           <div class="settings-grid">
+            <div class="control-group t2i-only full-width">
+              <label>Aspect Ratio</label>
+              <div class="preset-chips" id="aspect-ratio-chips">
+                <button type="button" class="preset-btn active" data-ratio="1.0" title="1:1">1:1</button>
+                <button type="button" class="preset-btn" data-ratio="1.333333" title="4:3">4:3</button>
+                <button type="button" class="preset-btn" data-ratio="0.75" title="3:4">3:4</button>
+                <button type="button" class="preset-btn" data-ratio="1.777777" title="16:9">16:9</button>
+                <button type="button" class="preset-btn" data-ratio="0.5625" title="9:16">9:16</button>
+                <button type="button" class="preset-btn" data-ratio="2.333333" title="21:9">21:9</button>
+              </div>
+            </div>
+
+            <div class="control-group t2i-only full-width">
+              <label>Megapixels <span class="helper-copy" style="font-weight:normal;">(Total Resolution)</span></label>
+              <div class="preset-chips" id="resolution-chips">
+                <button type="button" class="preset-btn" data-area="524288" title="~768x768">0.5 MP</button>
+                <button type="button" class="preset-btn active" data-area="1048576" title="~1024x1024">1 MP</button>
+                <button type="button" class="preset-btn" data-area="2073600" title="~1440x1440">2 MP</button>
+                <button type="button" class="preset-btn" data-area="4194304" title="~2048x2048">4 MP</button>
+                <button type="button" class="preset-btn" data-area="8294400" title="~4K Native">8 MP</button>
+              </div>
+            </div>
+
             <div class="control-group t2i-only">
               <label for="width"
                 >Width
-                <span class="val-display" id="val-width">1024</span></label
-              >
+                <input type="number" class="val-display-input" id="num-width" value="1024" min="256" max="4096" step="64" />
+              </label>
               <input
                 type="range"
                 id="width"
                 min="256"
-                max="2048"
+                max="4096"
                 step="64"
                 value="1024"
               />
@@ -124,29 +150,30 @@
             <div class="control-group t2i-only">
               <label for="height"
                 >Height
-                <span class="val-display" id="val-height">1024</span></label
-              >
+                <input type="number" class="val-display-input" id="num-height" value="1024" min="256" max="4096" step="64" />
+              </label>
               <input
                 type="range"
                 id="height"
                 min="256"
-                max="2048"
+                max="4096"
                 step="64"
                 value="1024"
               />
             </div>
 
             <div class="control-group">
-              <label for="steps"
-                >Steps <span class="val-display" id="val-steps">28</span></label
-              >
+              <label for="steps">
+                Steps <span class="val-display" id="val-steps">8</span>
+                <button id="steps-info-btn" class="info-btn" aria-haspopup="dialog" aria-controls="steps-hint" title="Why steps/guidance behave this way">i</button>
+              </label>
               <input
                 type="range"
                 id="steps"
                 min="1"
                 max="100"
                 step="1"
-                value="28"
+                value="8"
               />
             </div>
 
@@ -165,6 +192,20 @@
               />
             </div>
 
+            <div class="control-group">
+              <label for="variations"
+                >Variations <span class="val-display" id="val-variations">1</span></label
+              >
+              <input
+                type="range"
+                id="variations"
+                min="1"
+                max="4"
+                step="1"
+                value="1"
+              />
+            </div>
+
             <div class="control-group full-width">
               <label for="seed">Seed (-1 for random)</label>
               <input type="number" id="seed" value="-1" class="number-input" />
@@ -180,16 +221,35 @@
 
         <!-- Right Column: Results & History -->
         <div class="results-column">
-          <section class="results-panel glass-panel">
+          <section class="results-panel glass-panel" id="results-panel" data-state="idle">
             <div class="result-placeholder" id="result-placeholder">
-              <div class="placeholder-icon">
-                <i data-feather="image"></i>
+              <div class="result-empty" id="result-empty">
+                <div class="placeholder-icon">
+                  <i data-feather="image"></i>
+                </div>
+                <p>Your image will appear here</p>
+                <span class="placeholder-subcopy">Each generation is saved to your history below.</span>
               </div>
-              <p>Your creation will appear here</p>
+
+              <div class="result-loading" id="result-loading" aria-live="polite">
+                <div class="loading-rings" aria-hidden="true">
+                  <span></span>
+                  <span></span>
+                </div>
+                <p>Generating…</p>
+                <div class="progress-container">
+                    <div id="step-progress-bar" class="status-progress-bar">
+                        <div id="step-progress-fill" class="progress-fill"></div>
+                    </div>
+                    <span id="step-counter" class="placeholder-subcopy">Step 0 / 0</span>
+                </div>
+                <span id="result-loading-meta" class="placeholder-subcopy">Starting up…</span>
+              </div>
             </div>
 
-            <div class="result-container hidden" id="result-container">
-              <img id="result-image" alt="Generated result" />
+            <div class="result-container" id="result-container">
+              <div id="variations-grid" class="variations-grid hidden"></div>
+              <img id="result-image" alt="" />
               <div class="result-actions">
                 <button
                   id="download-btn"
@@ -237,10 +297,17 @@
       <span id="toast-message">An error occurred</span>
     </div>
 
-    <script src="main.js"></script>
-    <script>
-      // Initialize Feather icons
-      feather.replace();
-    </script>
+    <!-- Steps Guidance Popup -->
+    <div id="steps-hint" class="hint-popup hidden" role="dialog" aria-modal="false" aria-labelledby="steps-hint-title">
+      <div class="hint-inner">
+        <h4 id="steps-hint-title">About Steps & Guidance</h4>
+        <p>Because this interface uses a distilled image model, running beyond ~8 steps usually yields little to no quality improvement. The model is optimized for shorter sampling. Also, guidance scale has no effect on this distilled model — guidance is disabled for these weights.</p>
+        <div class="hint-actions">
+          <button id="close-steps-hint" class="text-btn">Close</button>
+        </div>
+      </div>
+    </div>
+
+    <script src="main.js?v=4"></script>
   </body>
 </html>
