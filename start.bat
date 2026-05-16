@@ -4,6 +4,16 @@ echo ---------------------------------------------------------
 echo Setting up FLUX.2-klein-4B Web Environment
 echo ---------------------------------------------------------
 
+:: Model variant selection: Set MODEL_VARIANT before running this script
+:: Options: bf16 (full precision ~13GB, default), fp8 (8-bit float ~4GB), gguf-q8 (Q8_0 GGUF ~4.9GB)
+:: Example: set MODEL_VARIANT=gguf-q8
+if "%MODEL_VARIANT%"=="" set MODEL_VARIANT=bf16
+echo [INFO] Model variant: %MODEL_VARIANT%
+
+:: Fast mode selection: set FAST_MODE=1 to skip reinstalling packages in an existing venv
+if "%FAST_MODE%"=="" set FAST_MODE=1
+echo [INFO] Fast mode: %FAST_MODE%
+
 :: Set Cache Directories to current folder
 set HF_HOME=%~dp0cache\huggingface
 set TORCH_HOME=%~dp0cache\torch
@@ -54,17 +64,9 @@ if not exist "venv\Scripts\activate.bat" (
 :: Activate Virtual Environment
 call venv\Scripts\activate.bat
 
-:: Upgrade pip
-echo [INFO] Upgrading pip...
-%PYTHON_CMD% -m pip install --upgrade pip >nul 2>&1
-
 :: Diagnostics
 echo [INFO] Python version:
 %PYTHON_CMD% --version
-
-:: Install Minimal Web Dependencies First
-echo [INFO] Installing Web Server...
-%PYTHON_CMD% -m pip install fastapi uvicorn python-multipart >nul
 
 :: Start Web Server in Background
 echo [INFO] Starting FastAPI Web Server...
@@ -72,10 +74,41 @@ start "FLUX Web UI" /b cmd /c "cd backend && ..\venv\Scripts\python.exe -m uvico
 
 :: Wait a moment for server to spin up
 timeout /t 3 >nul
-echo [INFO] The web interface is now running! You can open http://localhost:8000
+
+:: Detect LAN IP for remote access info
+set LAN_IP=
+for /f "delims=" %%a in ('powershell -NoProfile -Command "(Get-NetIPAddress -AddressFamily IPv4 | Where-Object { $_.IPAddress -notmatch '^127\.' -and $_.PrefixOrigin -ne 'WellKnown' } | Select-Object -First 1).IPAddress"') do set LAN_IP=%%a
+
+echo [INFO] The web interface is now running!
+echo [INFO]   Local:  http://localhost:8000
+if defined LAN_IP (
+    echo [INFO]   LAN:    http://%LAN_IP%:8000
+) else (
+    echo [INFO]   LAN:    Run 'ipconfig' to find your local address, then use port 8000
+)
 echo [INFO] ---------------------------------------------------------
+if "%FAST_MODE%"=="1" goto :FAST_MODE
+goto :FULL_SETUP
+
+:FAST_MODE
+echo [INFO] Fast mode enabled. Reusing the existing venv without reinstalling packages.
+if not exist "cache\tmp\ml_installed.flag" echo done > "cache\tmp\ml_installed.flag"
+echo [INFO] The web UI will now load the model using the existing environment.
+echo [INFO] You can now open http://localhost:8000
+pause
+goto :EOF
+
+:FULL_SETUP
 echo [INFO] Now beginning massive AI Model downloads (~10-15GB)...
 echo [INFO] Do not close this window until complete!
+
+:: Upgrade pip
+echo [INFO] Upgrading pip...
+%PYTHON_CMD% -m pip install --upgrade pip >nul 2>&1
+
+:: Install Minimal Web Dependencies First
+echo [INFO] Installing Web Server...
+%PYTHON_CMD% -m pip install fastapi uvicorn python-multipart >nul
 
 :: Force install Torch with CUDA 12.1
 echo [INFO] Ensuring PyTorch with CUDA support is installed...
@@ -93,4 +126,8 @@ if exist "cache\tmp\ml_installed.flag" del "cache\tmp\ml_installed.flag"
 echo done > "cache\tmp\ml_installed.flag"
 
 echo [SUCCESS] All downloads complete! The web UI will now begin loading the model into your GPU.
+:: The pause was BEFORE the server could see the flag, which caused the hang.
+:: Moving it after.
+timeout /t 5 >nul
+echo [INFO] You can now open http://localhost:8000
 pause

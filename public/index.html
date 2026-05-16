@@ -8,19 +8,16 @@
       content="A beautiful and aesthetic interface for the FLUX.2-klein-4B model. Generate and edit images with power."
     />
     <title>FLUX.2-klein-4B Studio</title>
-    <!-- Editorial display + technical body typography -->
+    <meta name="theme-color" content="#080806" />
+    <!-- Fonts loaded via @import in style.css -->
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link
-      href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600;9..144,700&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap"
-      rel="stylesheet"
-    />
 
     <!-- Feather Icons for lightweight, sharp iconography -->
     <script src="https://unpkg.com/feather-icons"></script>
 
-    <link rel="stylesheet" href="style.css?v=5" />
-    <link rel="stylesheet" href="gallery.css?v=3" />
+    <link rel="stylesheet" href="style.css?v=8" />
+    <link rel="stylesheet" href="gallery.css?v=6" />
   </head>
   <body>
     <div id="model-status-overlay" class="status-overlay hidden">
@@ -30,6 +27,15 @@
             <p id="status-message">Initializing...</p>
             <div class="status-progress-bar">
                 <div id="status-progress-fill" class="progress-fill"></div>
+            </div>
+            <div id="status-terminal" class="status-terminal">
+                <div class="terminal-header">
+                    <span>Live Console Output</span>
+                    <div class="terminal-dots"><span></span><span></span><span></span></div>
+                </div>
+                <div id="terminal-content" class="terminal-content">
+                    Initializing logs...
+                </div>
             </div>
         </div>
     </div>
@@ -47,6 +53,31 @@
           <div class="brand-copy">
             <p class="eyebrow">Local image atelier</p>
             <h1><span class="gradient-text">FLUX.2</span>-klein-4B</h1>
+            <div class="variant-row">
+              <span id="variant-badge" class="variant-badge">BF16</span>
+              <label class="variant-selector" for="model-variant">
+                <span class="variant-selector-label">Variant</span>
+                <select id="model-variant" class="variant-select">
+                  <option value="bf16" selected>BF16</option>
+                  <option value="fp8">FP8</option>
+                  <option value="gguf-bf16">BF16 GGUF</option>
+                  <option value="gguf-f16">F16 GGUF</option>
+                  <option value="gguf-q2-k">Q2_K GGUF</option>
+                  <option value="gguf-q3-k-m">Q3_K_M GGUF</option>
+                  <option value="gguf-q3-k-s">Q3_K_S GGUF</option>
+                  <option value="gguf-q4-0">Q4_0 GGUF</option>
+                  <option value="gguf-q4-1">Q4_1 GGUF</option>
+                  <option value="gguf-q4-k-m">Q4_K_M GGUF</option>
+                  <option value="gguf-q4-k-s">Q4_K_S GGUF</option>
+                  <option value="gguf-q5-0">Q5_0 GGUF</option>
+                  <option value="gguf-q5-1">Q5_1 GGUF</option>
+                  <option value="gguf-q5-k-m">Q5_K_M GGUF</option>
+                  <option value="gguf-q5-k-s">Q5_K_S GGUF</option>
+                  <option value="gguf-q6-k">Q6_K GGUF</option>
+                  <option value="gguf-q8-0">Q8_0 GGUF</option>
+                </select>
+              </label>
+            </div>
           </div>
         </div>
         <div class="mode-toggle">
@@ -66,6 +97,7 @@
       <div class="content-wrapper">
         <!-- Left Column: Controls -->
         <section class="controls-panel glass-panel">
+          <div class="controls-scroll">
           <!-- Prompt Input -->
           <div class="control-group">
             <label for="prompt">Prompt</label>
@@ -212,6 +244,8 @@
             </div>
           </div>
 
+          </div><!-- /.controls-scroll -->
+
           <!-- Generate Button -->
           <button id="generate-btn" class="generate-btn">
             <span class="btn-text">Generate Image</span>
@@ -219,69 +253,103 @@
           </button>
         </section>
 
-        <!-- Right Column: Results & History -->
-        <div class="results-column">
-          <section class="results-panel glass-panel" id="results-panel" data-state="idle">
-            <div class="result-placeholder" id="result-placeholder">
-              <div class="result-empty" id="result-empty">
-                <div class="placeholder-icon">
-                  <i data-feather="image"></i>
-                </div>
-                <p>Your image will appear here</p>
-                <span class="placeholder-subcopy">Each generation is saved to your history below.</span>
+        <!-- Results Canvas -->
+        <section class="results-panel glass-panel" id="results-panel" data-state="idle">
+          <div class="result-placeholder" id="result-placeholder">
+            <div class="result-empty" id="result-empty">
+              <div class="placeholder-icon">
+                <i data-feather="image"></i>
               </div>
-
-              <div class="result-loading" id="result-loading" aria-live="polite">
-                <div class="loading-rings" aria-hidden="true">
-                  <span></span>
-                  <span></span>
-                </div>
-                <p>Generating…</p>
-                <div class="progress-container">
-                    <div id="step-progress-bar" class="status-progress-bar">
-                        <div id="step-progress-fill" class="progress-fill"></div>
-                    </div>
-                    <span id="step-counter" class="placeholder-subcopy">Step 0 / 0</span>
-                </div>
-                <span id="result-loading-meta" class="placeholder-subcopy">Starting up…</span>
-              </div>
+              <p>Your image will appear here</p>
+              <span class="placeholder-subcopy">Each generation is saved to your history below.</span>
             </div>
 
-            <div class="result-container" id="result-container">
-              <div id="variations-grid" class="variations-grid hidden"></div>
-              <img id="result-image" alt="" />
-              <div class="result-actions">
-                <button
-                  id="download-btn"
-                  class="action-btn"
-                  aria-label="Download image"
-                >
-                  <i data-feather="download"></i>
-                </button>
-                <button
-                  id="fullscreen-btn"
-                  class="action-btn"
-                  aria-label="Fullscreen image"
-                >
-                  <i data-feather="maximize"></i>
-                </button>
+            <div class="result-loading" id="result-loading" aria-live="polite">
+              <div class="loading-rings" aria-hidden="true">
+                <span></span>
+                <span></span>
               </div>
+              <p>Generating…</p>
+              <div class="progress-container">
+                  <div id="step-progress-bar" class="status-progress-bar">
+                      <div id="step-progress-fill" class="progress-fill"></div>
+                  </div>
+                  <span id="step-counter" class="placeholder-subcopy">Step 0 / 0</span>
+              </div>
+              <span id="result-loading-meta" class="placeholder-subcopy">Starting up…</span>
             </div>
-          </section>
+          </div>
 
-          <!-- History Gallery -->
-          <section class="gallery-panel glass-panel">
-            <div class="gallery-header">
-              <h3><i data-feather="layers"></i> History</h3>
-              <button id="clear-history" class="text-btn">Clear</button>
+          <div class="result-container" id="result-container">
+            <div id="variations-grid" class="variations-grid hidden"></div>
+            <img id="result-image" alt="" />
+            <div class="result-actions">
+              <button
+                id="download-btn"
+                class="action-btn"
+                aria-label="Download image"
+              >
+                <i data-feather="download"></i>
+              </button>
+              <button
+                id="fullscreen-btn"
+                class="action-btn"
+                aria-label="Fullscreen image"
+              >
+                <i data-feather="maximize"></i>
+              </button>
             </div>
-            <div id="gallery-grid" class="gallery-grid">
-              <!-- History items will be injected here -->
-            </div>
-          </section>
-        </div>
+            <div id="result-meta" class="result-meta" aria-live="polite"></div>
+          </div>
+        </section>
       </div>
+
+      <!-- History Gallery — full-width filmstrip -->
+      <section class="gallery-panel">
+        <div class="gallery-header">
+          <h3><i data-feather="layers"></i> History</h3>
+          <div class="gallery-header-actions">
+            <button id="expand-gallery" class="text-btn" aria-label="Expand gallery">
+              <i data-feather="grid"></i> Expand
+            </button>
+            <button id="clear-history" class="text-btn">Clear</button>
+          </div>
+        </div>
+        <div id="gallery-grid" class="gallery-grid">
+          <!-- History items will be injected here -->
+        </div>
+      </section>
     </main>
+
+    <!-- Gallery Fullscreen Modal -->
+    <div class="gallery-modal hidden" id="gallery-modal">
+      <div class="gallery-modal-header">
+        <h2><i data-feather="layers"></i> History</h2>
+        <button class="gallery-modal-close" id="close-gallery-modal" aria-label="Close gallery">
+          <i data-feather="x"></i>
+        </button>
+      </div>
+      <div class="gallery-modal-body">
+        <div id="gallery-modal-grid" class="gallery-modal-grid"></div>
+      </div>
+      <!-- Lightbox within gallery modal -->
+      <div class="gallery-lightbox hidden" id="gallery-lightbox">
+        <button class="lightbox-nav lightbox-prev" id="lightbox-prev" aria-label="Previous"><i data-feather="chevron-left"></i></button>
+        <div class="lightbox-img-wrap">
+          <img id="lightbox-img" src="" alt="" />
+          <p class="lightbox-prompt" id="lightbox-prompt"></p>
+        </div>
+        <button class="lightbox-nav lightbox-next" id="lightbox-next" aria-label="Next"><i data-feather="chevron-right"></i></button>
+      <button class="lightbox-close" id="lightbox-close" aria-label="Close"><i data-feather="x"></i></button>
+      <div class="lightbox-toolbar">
+        <button id="lightbox-edit" class="lightbox-tool-btn" title="Edit this image">
+          <i data-feather="edit-2"></i> Edit
+        </button>
+        <button id="lightbox-download" class="lightbox-tool-btn" title="Download image">
+          <i data-feather="download"></i> Download
+        </button>
+      </div>
+    </div>
 
     <!-- Fullscreen Modal -->
     <div class="modal hidden" id="fullscreen-modal">
@@ -308,6 +376,6 @@
       </div>
     </div>
 
-    <script src="main.js?v=4"></script>
+    <script src="main.js?v=5"></script>
   </body>
 </html>

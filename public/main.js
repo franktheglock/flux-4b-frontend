@@ -32,6 +32,7 @@ document.addEventListener("DOMContentLoaded", () => {
     resultLoadingMeta: document.getElementById("result-loading-meta"),
     resultContainer: document.getElementById("result-container"),
     resultImage: document.getElementById("result-image"),
+    resultMeta: document.getElementById("result-meta"),
     downloadBtn: document.getElementById("download-btn"),
     fullscreenBtn: document.getElementById("fullscreen-btn"),
     galleryGrid: document.getElementById("gallery-grid"),
@@ -43,6 +44,9 @@ document.addEventListener("DOMContentLoaded", () => {
     toastMsg: document.getElementById("toast-message"),
     statusOverlay: document.getElementById("model-status-overlay"),
     statusMsg: document.getElementById("status-message"),
+    variantBadge: document.getElementById("variant-badge"),
+    variantSelect: document.getElementById("model-variant"),
+    terminalContent: document.getElementById("terminal-content"),
     stepsInfoBtn: document.getElementById("steps-info-btn"),
     stepsHint: document.getElementById("steps-hint"),
     closeStepsHint: document.getElementById("close-steps-hint"),
@@ -50,6 +54,18 @@ document.addEventListener("DOMContentLoaded", () => {
     variationsGrid: document.getElementById("variations-grid"),
     stepProgressFill: document.getElementById("step-progress-fill"),
     stepCounter: document.getElementById("step-counter"),
+    expandGalleryBtn: document.getElementById("expand-gallery"),
+    galleryModal: document.getElementById("gallery-modal"),
+    galleryModalGrid: document.getElementById("gallery-modal-grid"),
+    closeGalleryModalBtn: document.getElementById("close-gallery-modal"),
+    galleryLightbox: document.getElementById("gallery-lightbox"),
+    lightboxImg: document.getElementById("lightbox-img"),
+    lightboxPrompt: document.getElementById("lightbox-prompt"),
+    lightboxPrev: document.getElementById("lightbox-prev"),
+    lightboxNext: document.getElementById("lightbox-next"),
+    lightboxClose: document.getElementById("lightbox-close"),
+    lightboxDownload: document.getElementById("lightbox-download"),
+    lightboxEdit: document.getElementById("lightbox-edit"),
   };
 
   const STEPS_HINT_THRESHOLD = 8;
@@ -70,7 +86,7 @@ document.addEventListener("DOMContentLoaded", () => {
         .slice(0, MAX_HISTORY_ITEMS)
         .map((entry) => ({
           ...entry,
-          id: entry.id || entry.timestamp,
+          id: entry.id ? String(entry.id) : String(entry.timestamp),
         }));
     } catch {
       return [];
@@ -79,12 +95,19 @@ document.addEventListener("DOMContentLoaded", () => {
 
   function persistHistory() {
     const save = () => {
-      // Omit the full 'image' base64 to avoid blowing up localStorage quota (5MB limit)
-      const toSave = history.map(({ image, ...rest }) => rest);
+      // Ensure we don't save large images to localStorage
+      const toSave = history.map((item) => {
+        // Create a copy without the large image
+        const cleanItem = { ...item };
+        delete cleanItem.image;
+        
+        // If thumb is somehow missing but we have an image in memory (shouldn't happen with new logic), 
+        // we'd have a problem, but new logic sets image: null explicitly.
+        return cleanItem;
+      });
       try {
         localStorage.setItem(HISTORY_KEY, JSON.stringify(toSave.slice(0, MAX_HISTORY_ITEMS)));
       } catch {
-        // Fallback for extreme cases (e.g. huge thumbs)
         const smaller = toSave.slice(0, Math.max(4, MAX_HISTORY_ITEMS - 4));
         try {
           localStorage.setItem(HISTORY_KEY, JSON.stringify(smaller));
@@ -160,6 +183,19 @@ document.addEventListener("DOMContentLoaded", () => {
       return tx.complete || new Promise((res) => (tx.oncomplete = res));
     } catch {
       return null;
+    }
+  }
+
+  async function deleteImageFromDB(id) {
+    try {
+      const db = await openDB();
+      const tx = db.transaction("images", "readwrite");
+      const store = tx.objectStore("images");
+      store.delete(id);
+      return tx.complete || new Promise((res) => (tx.oncomplete = res));
+    } catch (err) {
+      console.warn("Failed to delete image from IndexedDB:", err);
+      throw err;
     }
   }
 
@@ -324,6 +360,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
   function showIdleState() {
     refs.resultsPanel.dataset.state = "idle";
+    if (refs.resultMeta) refs.resultMeta.textContent = "";
   }
 
   // Steps hint popup
@@ -349,6 +386,7 @@ document.addEventListener("DOMContentLoaded", () => {
   function showLoadingState(message = "Starting up…") {
     refs.resultsPanel.dataset.state = "loading";
     refs.resultLoadingMeta.textContent = message;
+    if (refs.resultMeta) refs.resultMeta.textContent = "";
     
     // Reset step progress
     if (refs.stepProgressFill) refs.stepProgressFill.style.width = "0%";
@@ -399,13 +437,29 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     refs.resultsPanel.dataset.state = "result";
+
+    // Store the raw result data so we can edit it later if needed
+    refs.resultImage.dataset.rawResult = src;
     refs.resultImage.alt = "Generated result";
   }
 
+  function formatGenerationTime(ms) {
+    if (typeof ms !== "number" || !Number.isFinite(ms) || ms < 0) {
+      return null;
+    }
+
+    const seconds = ms / 1000;
+    if (seconds < 10) {
+      return `${seconds.toFixed(2)}s`;
+    }
+    return `${seconds.toFixed(1)}s`;
+  }
+
   function buildHistoryItem(item, index) {
-    const card = document.createElement("button");
-    card.type = "button";
+    const card = document.createElement("div");
     card.className = "gallery-item";
+    card.setAttribute("role", "button");
+    card.tabIndex = 0;
     card.setAttribute("aria-label", `Open history image ${index + 1}`);
     card.innerHTML = `
       <img src="${item.thumb || item.image}" alt="History image ${index + 1}" loading="lazy" decoding="async">
@@ -417,27 +471,172 @@ document.addEventListener("DOMContentLoaded", () => {
             <span>${item.size}</span>
             <span>Steps ${item.steps}</span>
             <span>Guidance ${item.guidance}</span>
+            ${item.variationLabel ? `<span>${escapeHtml(item.variationLabel)}</span>` : ""}
+            ${item.generationTime ? `<span>Gen ${escapeHtml(item.generationTime)}</span>` : ""}
             ${item.seed !== "-1" ? `<span>Seed ${item.seed}</span>` : ""}
           </div>
+        </div>
+        <div class="gallery-actions">
+          <button type="button" class="history-action-btn delete-btn" title="Remove from history">
+            <i data-feather="trash-2"></i>
+          </button>
+          <button type="button" class="history-action-btn edit-btn" title="Edit this image">
+            <i data-feather="edit-2"></i>
+          </button>
+          <button type="button" class="history-action-btn copy-trigger-btn" title="Copy options">
+            <i data-feather="copy"></i>
+          </button>
+        </div>
+        <div class="copy-overlay-centered hidden">
+          <button type="button" class="big-copy-btn copy-img-btn" title="Copy Image">
+            <i data-feather="image"></i>
+            <span>Copy Image</span>
+          </button>
+          <button type="button" class="big-copy-btn copy-prompt-btn" title="Copy Prompt">
+            <i data-feather="type"></i>
+            <span>Copy Prompt</span>
+          </button>
         </div>
       </div>
     `;
 
-    card.addEventListener("click", async () => {
-      // Try to load the full image from IndexedDB; fall back to the thumbnail if absent
-      let full = null;
-      if (item.id) {
-        try {
-          full = await getImageFromDB(item.id);
-        } catch (err) {
-          console.warn("Could not retrieve full resolution image:", err);
-          full = null;
-        }
+    // Handle clicks on the buttons vs the card itself
+    card.addEventListener("click", async (e) => {
+      const triggerBtn = e.target.closest(".copy-trigger-btn");
+      const copyPromptBtn = e.target.closest(".copy-prompt-btn");
+      const copyImgBtn = e.target.closest(".copy-img-btn");
+      const editBtn = e.target.closest(".edit-btn");
+      const deleteBtn = e.target.closest(".delete-btn");
+      const overlay = card.querySelector(".copy-overlay-centered");
+      const actions = card.querySelector(".gallery-actions");
+
+      // Toggle copy overlay
+      if (triggerBtn) {
+        e.stopPropagation();
+        overlay.classList.remove("hidden");
+        actions.style.display = "none";
+        return;
       }
-      // If we found the full image, use it, otherwise use the original item.image or item.thumb
+
+      if (copyPromptBtn) {
+        e.stopPropagation();
+        try {
+          await navigator.clipboard.writeText(item.prompt);
+          
+          const originalHTML = copyPromptBtn.innerHTML;
+          copyPromptBtn.innerHTML = '<i data-feather="check"></i> <span>Copied!</span>';
+          if (typeof feather !== "undefined") feather.replace();
+          
+          showToast("Prompt copied!");
+          
+          setTimeout(() => {
+            overlay.classList.add("hidden");
+            actions.style.display = "flex";
+            copyPromptBtn.innerHTML = originalHTML;
+            if (typeof feather !== "undefined") feather.replace();
+          }, 800);
+        } catch (err) {
+          showToast("Failed to copy prompt.");
+        }
+        return;
+      }
+
+      if (copyImgBtn) {
+        e.stopPropagation();
+        try {
+          let full = null;
+          if (item.diskUrl) {
+            full = item.diskUrl;
+          } else if (item.id) {
+            full = await getImageFromDB(item.id);
+          }
+          const src = full || item.image || item.thumb;
+          
+          const response = await fetch(src);
+          const blob = await response.blob();
+          
+          await navigator.clipboard.write([
+            new ClipboardItem({ [blob.type]: blob })
+          ]);
+
+          const originalHTML = copyImgBtn.innerHTML;
+          copyImgBtn.innerHTML = '<i data-feather="check"></i> <span>Copied!</span>';
+          if (typeof feather !== "undefined") feather.replace();
+
+          showToast("Image copied to clipboard!");
+          
+          setTimeout(() => {
+            overlay.classList.add("hidden");
+            actions.style.display = "flex";
+            copyImgBtn.innerHTML = originalHTML;
+            if (typeof feather !== "undefined") feather.replace();
+          }, 800);
+        } catch (err) {
+          console.error("Copy failed", err);
+          showToast("Copying failed. Use Download instead.");
+        }
+        return;
+      }
+
+      if (deleteBtn) {
+        e.stopPropagation();
+        if (!confirm("Remove this image from history?")) return;
+        history = history.filter((h) => h.id !== item.id);
+        renderHistory();
+        persistHistory();
+        if (item.id) {
+          try { await deleteImageFromDB(item.id); } catch (err) { console.warn("Failed delete:", err); }
+        }
+        return;
+      }
+
+      if (editBtn) {
+        e.stopPropagation();
+        editHistoryItem(item);
+        return;
+      }
+
+      // Default: Load history item into main view
+      const isCopyOverlayActive = !overlay.classList.contains("hidden");
+      if (isCopyOverlayActive) return;
+
+      let full = null;
+      if (item.diskUrl) {
+        full = item.diskUrl; // Prioritize local disk path
+      } else if (item.id) {
+        try { full = await getImageFromDB(item.id); } catch (err) { full = null; }
+      }
       await showResultImage(full || item.image || item.thumb);
       refs.resultContainer.scrollIntoView({ behavior: "smooth", block: "center" });
     });
+
+    card.addEventListener("keydown", async (event) => {
+      if (event.key !== "Enter" && event.key !== " ") {
+        return;
+      }
+
+      const activeTag = event.target?.tagName?.toLowerCase();
+      if (activeTag === "button" || activeTag === "a" || activeTag === "input") {
+        return;
+      }
+
+      event.preventDefault();
+      await showResultImage(item.diskUrl || item.image || item.thumb);
+      refs.resultContainer.scrollIntoView({ behavior: "smooth", block: "center" });
+    });
+
+    // Reset when mouse leaves the card entirely
+    card.addEventListener("mouseleave", () => {
+      const overlay = card.querySelector(".copy-overlay-centered");
+      const actions = card.querySelector(".gallery-actions");
+      if (overlay) overlay.classList.add("hidden");
+      if (actions) actions.style.display = "flex";
+    });
+
+    // Final feather refresh for this card
+    setTimeout(() => {
+      if (typeof feather !== "undefined") feather.replace();
+    }, 0);
 
     return card;
   }
@@ -456,6 +655,9 @@ document.addEventListener("DOMContentLoaded", () => {
     const fragment = document.createDocumentFragment();
     history.forEach((item, index) => fragment.appendChild(buildHistoryItem(item, index)));
     refs.galleryGrid.appendChild(fragment);
+    
+    // Refresh icons since we just injected new items
+    if (typeof feather !== "undefined") feather.replace();
   }
 
   function addHistoryItem(item) {
@@ -530,6 +732,58 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   }
 
+  async function editHistoryItem(item) {
+    // 1. Set mode to I2I
+    setMode("i2i");
+
+    // 2. Populate basic settings
+    if (refs.prompt) refs.prompt.value = item.prompt || "";
+    if (refs.steps) {
+      refs.steps.value = item.steps || 8;
+      document.getElementById("val-steps").textContent = refs.steps.value;
+    }
+    if (refs.guidance) {
+      refs.guidance.value = item.guidance || 3.5;
+      document.getElementById("val-guidance").textContent = refs.guidance.value;
+    }
+    if (refs.seed) refs.seed.value = item.seed || -1;
+
+    // 3. Size (don't set width/height for I2I as model uses image size, but update sliders/inputs for visibility)
+    if (item.size) {
+      const [w, h] = item.size.split("x").map(n => parseInt(n));
+      if (!isNaN(w) && !isNaN(h)) {
+        if (refs.width) { refs.width.value = w; document.getElementById("num-width").value = w; }
+        if (refs.height) { refs.height.value = h; document.getElementById("num-height").value = h; }
+      }
+    }
+
+    // 4. Fetch the full-res image from Disk (preferred) or DB
+    let full = null;
+    if (item.diskUrl) {
+      full = item.diskUrl;
+    } else if (item.id) {
+      try { full = await getImageFromDB(item.id); } catch { /* ignore */ }
+    }
+    const finalSrc = full || item.thumb || item.image;
+
+    if (finalSrc) {
+      // Convert dataURL to File so it works with the existing logic
+      const res = await fetch(finalSrc);
+      const blob = await res.blob();
+      const file = new File([blob], "edited-image.png", { type: "image/png" });
+      
+      selectedFile = file;
+      refs.uploadPreview.src = finalSrc;
+      refs.uploadPreview.classList.remove("hidden");
+      refs.clearUploadBtn.classList.remove("hidden");
+    }
+
+    // 5. Scroll to top and close modal/lightbox
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+    closeLightbox();
+    refs.galleryModal.classList.add("hidden");
+  }
+
   function getRequestSettings() {
     const settings = {
       prompt: (refs.prompt?.value || "").trim(),
@@ -540,6 +794,7 @@ document.addEventListener("DOMContentLoaded", () => {
       height: refs.height?.value || "1024",
       variations: refs.variations?.value || "1",
       mode: currentMode,
+      modelVariant: refs.variantSelect?.value || "bf16",
     };
     return settings;
   }
@@ -563,6 +818,7 @@ document.addEventListener("DOMContentLoaded", () => {
     formData.append("guidance_scale", settings.guidance || "3.5");
     formData.append("seed", settings.seed || "-1");
     formData.append("num_images_per_prompt", refs.variations.value);
+    formData.append("model_variant", settings.modelVariant || "bf16");
 
     let endpoint = "/api/generate";
 
@@ -624,30 +880,47 @@ document.addEventListener("DOMContentLoaded", () => {
 
       const mainImage = data.images && data.images.length > 0 ? data.images[0] : data.image;
       const variations = data.images || [];
+      const generationTime = formatGenerationTime(data.generation_time_ms);
+      const diskUrls = Array.isArray(data.urls) ? data.urls : [];
 
       await showResultImage(mainImage, variations);
 
-      // Store main full image in IndexedDB and keep a compressed thumbnail in localStorage
-      const ts = Date.now();
-      const thumb = await createThumbnail(mainImage, 420, 0.72);
-      try {
-        await saveImageToDB(ts, mainImage);
-      } catch (err) {
-        console.warn("Failed to save full image to IndexedDB:", err);
+      if (refs.resultMeta) {
+        refs.resultMeta.textContent = generationTime ? `Gen time ${generationTime}` : "";
       }
 
-      addHistoryItem({
-        thumb: thumb || mainImage,
-        image: mainImage, // Keep original high-res in the metadata object for fallback
-        id: ts,
-        prompt: settings.prompt,
-        steps: settings.steps,
-        guidance: settings.guidance,
-        seed: settings.seed,
-        mode: settings.mode,
-        size: settings.mode === "t2i" ? `${settings.width}×${settings.height}` : "image-conditioned",
-        timestamp: ts,
-      });
+      const ts = Date.now();
+      const historyEntries = [];
+      const count = Math.max(variations.length, 1);
+
+      for (let index = count - 1; index >= 0; index -= 1) {
+        const imageSrc = variations[index] || mainImage;
+        const thumb = await createThumbnail(imageSrc, 420, 0.72);
+        const itemId = `${ts}-${index}`;
+        try {
+          await saveImageToDB(itemId, imageSrc);
+        } catch (err) {
+          console.warn("Failed to save full image to IndexedDB:", err);
+        }
+
+        historyEntries.push({
+          thumb: thumb || imageSrc,
+          image: null,
+          diskUrl: diskUrls[index] || diskUrls[0] || null,
+          id: itemId,
+          generationTime,
+          prompt: settings.prompt,
+          steps: settings.steps,
+          guidance: settings.guidance,
+          seed: settings.seed,
+          mode: settings.mode,
+          size: settings.mode === "t2i" ? `${settings.width}×${settings.height}` : "image-conditioned",
+          timestamp: ts,
+          variationLabel: count > 1 ? `Variation ${index + 1} of ${count}` : null,
+        });
+      }
+
+      historyEntries.forEach((entry) => addHistoryItem(entry));
     } catch (error) {
       clearInterval(progressInterval);
       console.error(error);
@@ -659,14 +932,50 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   async function pollModelStatus() {
+    let logSource = null;
+    
+    // Connect to SSE log stream
+    function connectLogs() {
+      if (logSource) return;
+      logSource = new EventSource("/api/logs");
+      logSource.onmessage = (event) => {
+        if (!refs.terminalContent) return;
+        const line = document.createElement("div");
+        line.textContent = `> ${event.data}`;
+        refs.terminalContent.appendChild(line);
+        // Autoscroll
+        refs.terminalContent.scrollTop = refs.terminalContent.scrollHeight;
+      };
+      logSource.onerror = () => {
+        if (logSource) logSource.close();
+        logSource = null;
+        setTimeout(connectLogs, 2000);
+      };
+    }
+
     try {
       const response = await fetch("/api/model-status");
       const data = await response.json();
 
       if (data.status === "ready") {
         refs.statusOverlay.classList.add("hidden");
+        if (logSource) logSource.close();
+        // Update variant badge
+        if (data.selected_variant && refs.variantSelect) {
+          refs.variantSelect.value = data.selected_variant;
+        }
+        if (data.variant_label && refs.variantBadge) {
+          refs.variantBadge.textContent = data.variant_label;
+          refs.variantBadge.title = `Model: ${data.variant_label} (${data.variant_size})`;
+        }
         return;
       }
+
+      // If not ready, ensure logs are connecting
+      if (refs.statusOverlay.classList.contains("hidden")) {
+        refs.statusOverlay.classList.remove("hidden");
+      }
+      connectLogs();
 
       if (data.status === "error") {
         refs.statusMsg.textContent = `Error: ${data.message}`;
@@ -674,7 +983,6 @@ document.addEventListener("DOMContentLoaded", () => {
         return;
       }
 
-      refs.statusOverlay.classList.remove("hidden");
       refs.statusMsg.textContent = data.message || "Downloading model assets...";
       setTimeout(pollModelStatus, 3000);
     } catch (error) {
@@ -716,6 +1024,112 @@ document.addEventListener("DOMContentLoaded", () => {
       refs.modal.classList.add("hidden");
     }
   });
+
+  // ── Full-screen Gallery Modal ────────────────────────────────────────────
+  let lightboxIndex = 0;
+
+  function buildGalleryModalGrid() {
+    refs.galleryModalGrid.textContent = "";
+    const fragment = document.createDocumentFragment();
+    history.forEach((item, index) => {
+      const card = document.createElement("button");
+      card.type = "button";
+      card.className = "gallery-modal-item";
+      card.setAttribute("aria-label", `View image ${index + 1}`);
+      const img = document.createElement("img");
+      img.src = item.thumb || item.image || "";
+      img.loading = "lazy";
+      img.alt = "";
+      card.appendChild(img);
+      card.addEventListener("click", () => openLightbox(index));
+      fragment.appendChild(card);
+    });
+    refs.galleryModalGrid.appendChild(fragment);
+  }
+
+  async function openLightbox(index) {
+    lightboxIndex = index;
+    const item = history[index];
+    if (!item) return;
+
+    let full = null;
+    if (item.diskUrl) {
+      full = item.diskUrl;
+    } else if (item.id) {
+      try { full = await getImageFromDB(item.id); } catch { /* ignore */ }
+    }
+    refs.lightboxImg.src = full || item.thumb || item.image || "";
+    refs.lightboxPrompt.textContent = item.prompt || "";
+    refs.galleryLightbox.classList.remove("hidden");
+    refs.lightboxPrev.classList.toggle("hidden", history.length <= 1);
+    refs.lightboxNext.classList.toggle("hidden", history.length <= 1);
+  }
+
+  function closeLightbox() {
+    refs.galleryLightbox.classList.add("hidden");
+    refs.lightboxImg.src = "";
+  }
+
+  refs.expandGalleryBtn.addEventListener("click", () => {
+    buildGalleryModalGrid();
+    refs.galleryModal.classList.remove("hidden");
+    feather.replace();
+  });
+
+  refs.closeGalleryModalBtn.addEventListener("click", () => {
+    closeLightbox();
+    refs.galleryModal.classList.add("hidden");
+  });
+
+  refs.galleryModal.addEventListener("click", (ev) => {
+    if (ev.target === refs.galleryModal) {
+      closeLightbox();
+      refs.galleryModal.classList.add("hidden");
+    }
+  });
+
+  refs.lightboxClose.addEventListener("click", closeLightbox);
+
+  refs.lightboxPrev.addEventListener("click", () => {
+    if (!history.length) return;
+    openLightbox((lightboxIndex - 1 + history.length) % history.length);
+  });
+
+  refs.lightboxNext.addEventListener("click", () => {
+    if (!history.length) return;
+    openLightbox((lightboxIndex + 1) % history.length);
+  });
+
+  refs.lightboxDownload.addEventListener("click", () => {
+    const src = refs.lightboxImg.src;
+    if (!src) return;
+    const a = document.createElement("a");
+    a.href = src;
+    a.download = `flux-4b-${Date.now()}.png`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+  });
+
+  refs.lightboxEdit.addEventListener("click", () => {
+    const item = history[lightboxIndex];
+    if (item) editHistoryItem(item);
+  });
+
+  // Arrow key navigation for lightbox
+  document.addEventListener("keydown", (ev) => {
+    if (refs.galleryLightbox.classList.contains("hidden")) return;
+    if (ev.key === "ArrowLeft") refs.lightboxPrev.click();
+    if (ev.key === "ArrowRight") refs.lightboxNext.click();
+    if (ev.key === "Escape") closeLightbox();
+  });
+  // Escape also closes the gallery modal
+  document.addEventListener("keydown", (ev) => {
+    if (ev.key === "Escape" && !refs.galleryModal.classList.contains("hidden") && refs.galleryLightbox.classList.contains("hidden")) {
+      refs.galleryModal.classList.add("hidden");
+    }
+  });
+  // ────────────────────────────────────────────────────────────────────────
 
   refs.clearHistoryBtn.addEventListener("click", () => {
     if (!history.length || !confirm("Clear image history?")) {

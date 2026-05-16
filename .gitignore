@@ -42,3 +42,13 @@ public/*.map
 # Others
 *.sqlite3
 *.db
+
+outputs/
+venv/
+__pycache__/
+*.pyc
+cache/
+.vscode/
+.idea/
+.DS_Store
+*.whl
