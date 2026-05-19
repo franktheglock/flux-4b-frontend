@@ -43,9 +43,15 @@ document.addEventListener("DOMContentLoaded", () => {
     toast: document.getElementById("error-toast"),
     toastMsg: document.getElementById("toast-message"),
     statusOverlay: document.getElementById("model-status-overlay"),
+    statusTitle: document.getElementById("status-title"),
     statusMsg: document.getElementById("status-message"),
+    statusHardware: document.getElementById("status-hardware"),
+    statusProgressBar: document.getElementById("status-progress-bar"),
+    statusTerminal: document.getElementById("status-terminal"),
     variantBadge: document.getElementById("variant-badge"),
     variantSelect: document.getElementById("model-variant"),
+    downloadPrompt: document.getElementById("download-prompt"),
+    downloadModelList: document.getElementById("download-model-list"),
     terminalContent: document.getElementById("terminal-content"),
     stepsInfoBtn: document.getElementById("steps-info-btn"),
     stepsHint: document.getElementById("steps-hint"),
@@ -74,6 +80,8 @@ document.addEventListener("DOMContentLoaded", () => {
   let selectedRefFile = null;
   let toastTimeout;
   let history = loadHistory();
+  let modelDownloadPending = false;
+  let lastDownloadVariants = [];
 
   function loadHistory() {
     try {
@@ -391,6 +399,122 @@ document.addEventListener("DOMContentLoaded", () => {
     // Reset step progress
     if (refs.stepProgressFill) refs.stepProgressFill.style.width = "0%";
     if (refs.stepCounter) refs.stepCounter.textContent = "Step 0 / 0";
+  }
+
+  function describeHardware(hardware = {}) {
+    const parts = [];
+    if (hardware.gpu_name) {
+      parts.push(hardware.gpu_name);
+    }
+    if (typeof hardware.total_vram_gb === "number") {
+      parts.push(`${hardware.total_vram_gb.toFixed(1)} GB VRAM`);
+    }
+    if (hardware.backend_label) {
+      parts.push(hardware.backend_label);
+    }
+    return parts.join(" • ");
+  }
+
+  function setStatusOverlayMode(mode, hardware = null) {
+    const isPrompt = mode === "download_required";
+    refs.downloadPrompt?.classList.toggle("hidden", !isPrompt);
+    refs.statusProgressBar?.classList.toggle("hidden", isPrompt);
+    refs.statusTerminal?.classList.toggle("hidden", isPrompt);
+
+    if (refs.statusHardware) {
+      const summary = describeHardware(hardware || {});
+      refs.statusHardware.textContent = summary;
+      refs.statusHardware.classList.toggle("hidden", !summary);
+    }
+  }
+
+  function formatFitCopy(variant) {
+    const fitLabel = variant.fit_label || "VRAM unknown";
+    if (typeof variant.estimated_size_gb === "number") {
+      return `${fitLabel} for roughly ${variant.estimated_size_gb.toFixed(2)} GB of model weights.`;
+    }
+    return fitLabel;
+  }
+
+  async function requestModelDownload(variantKey) {
+    if (modelDownloadPending) return;
+    modelDownloadPending = true;
+    renderDownloadOptions({ available_variants: lastDownloadVariants });
+
+    try {
+      const formData = new FormData();
+      formData.append("model_variant", variantKey);
+      const response = await fetch("/api/download-model", {
+        method: "POST",
+        body: formData,
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.message || "Failed to start model download");
+      }
+
+      if (refs.statusTitle) refs.statusTitle.textContent = "Downloading Model Assets";
+      if (refs.statusMsg) refs.statusMsg.textContent = data.message || "Downloading model assets...";
+      setStatusOverlayMode("downloading");
+      setTimeout(pollModelStatus, 800);
+    } catch (error) {
+      modelDownloadPending = false;
+      showToast(error.message || "Failed to start model download.");
+    }
+  }
+
+  function renderDownloadOptions(status) {
+    if (!refs.downloadModelList) return;
+
+    const variants = Array.isArray(status.available_variants) ? [...status.available_variants] : [];
+    variants.sort((left, right) => {
+      const leftSize = typeof left.estimated_size_gb === "number" ? left.estimated_size_gb : Number.POSITIVE_INFINITY;
+      const rightSize = typeof right.estimated_size_gb === "number" ? right.estimated_size_gb : Number.POSITIVE_INFINITY;
+      return leftSize - rightSize;
+    });
+    lastDownloadVariants = variants;
+
+    refs.downloadModelList.innerHTML = "";
+    const fragment = document.createDocumentFragment();
+
+    variants.forEach((variant) => {
+      const card = document.createElement("article");
+      card.className = "download-model-card";
+
+      const header = document.createElement("div");
+      header.className = "download-model-header";
+
+      const nameWrap = document.createElement("div");
+      const name = document.createElement("div");
+      name.className = "download-model-name";
+      name.textContent = variant.label;
+      const size = document.createElement("div");
+      size.className = "download-model-size";
+      size.textContent = variant.size || "Unknown size";
+      nameWrap.append(name, size);
+
+      const fitBadge = document.createElement("span");
+      fitBadge.className = `fit-badge ${variant.fit_status || "unknown"}`;
+      fitBadge.textContent = variant.fit_label || "VRAM unknown";
+      header.append(nameWrap, fitBadge);
+
+      const meta = document.createElement("div");
+      meta.className = "download-model-meta";
+      meta.textContent = formatFitCopy(variant);
+
+      const action = document.createElement("button");
+      action.type = "button";
+      action.className = "download-model-action";
+      action.dataset.variantKey = variant.key;
+      action.textContent = modelDownloadPending ? "Starting Download..." : `Download ${variant.label}`;
+      action.disabled = modelDownloadPending;
+      action.addEventListener("click", () => requestModelDownload(variant.key));
+
+      card.append(header, meta, action);
+      fragment.appendChild(card);
+    });
+
+    refs.downloadModelList.appendChild(fragment);
   }
 
   async function showResultImage(src, variations = []) {
@@ -960,6 +1084,7 @@ document.addEventListener("DOMContentLoaded", () => {
       if (data.status === "ready") {
         refs.statusOverlay.classList.add("hidden");
         if (logSource) logSource.close();
+        modelDownloadPending = false;
         // Update variant badge
         if (data.selected_variant && refs.variantSelect) {
           refs.variantSelect.value = data.selected_variant;
@@ -975,7 +1100,29 @@ document.addEventListener("DOMContentLoaded", () => {
       if (refs.statusOverlay.classList.contains("hidden")) {
         refs.statusOverlay.classList.remove("hidden");
       }
+
+      if (data.status === "download_required") {
+        if (logSource) {
+          logSource.close();
+          logSource = null;
+        }
+        modelDownloadPending = false;
+        if (refs.statusTitle) refs.statusTitle.textContent = "Choose a Model to Download";
+        refs.statusMsg.textContent = data.message || "Choose a model to download.";
+        setStatusOverlayMode("download_required", data.hardware);
+        renderDownloadOptions(data);
+        setTimeout(pollModelStatus, 3000);
+        return;
+      }
+
+      setStatusOverlayMode(data.status, data.hardware);
       connectLogs();
+
+      if (data.status === "downloading" && refs.statusTitle) {
+        refs.statusTitle.textContent = "Downloading Model Assets";
+      } else if (refs.statusTitle) {
+        refs.statusTitle.textContent = "Loading Model Assets";
+      }
 
       if (data.status === "error") {
         refs.statusMsg.textContent = `Error: ${data.message}`;
@@ -983,6 +1130,7 @@ document.addEventListener("DOMContentLoaded", () => {
         return;
       }
 
+      refs.statusMsg.style.color = "var(--text-muted)";
       refs.statusMsg.textContent = data.message || "Downloading model assets...";
       setTimeout(pollModelStatus, 3000);
     } catch (error) {

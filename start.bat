@@ -1,14 +1,17 @@
 @echo off
-setlocal
+setlocal enabledelayedexpansion
 echo ---------------------------------------------------------
 echo Setting up FLUX.2-klein-4B Web Environment
 echo ---------------------------------------------------------
 
 :: Model variant selection: Set MODEL_VARIANT before running this script
-:: Options: bf16 (full precision ~13GB, default), fp8 (8-bit float ~4GB), gguf-q8 (Q8_0 GGUF ~4.9GB)
+:: Options: bf16, fp8, gguf-* variants.
 :: Example: set MODEL_VARIANT=gguf-q8
-if "%MODEL_VARIANT%"=="" set MODEL_VARIANT=bf16
-echo [INFO] Model variant: %MODEL_VARIANT%
+if "%MODEL_VARIANT%"=="" (
+    echo [INFO] Model variant: auto (last saved in .env, or bf16 if unset)
+) else (
+    echo [INFO] Model variant override: %MODEL_VARIANT%
+)
 
 :: Fast mode selection: set FAST_MODE=1 to skip reinstalling packages in an existing venv
 if "%FAST_MODE%"=="" set FAST_MODE=1
@@ -63,10 +66,41 @@ if not exist "venv\Scripts\activate.bat" (
 
 :: Activate Virtual Environment
 call venv\Scripts\activate.bat
+set VENV_PYTHON=%~dp0venv\Scripts\python.exe
+
+:: Detect the preferred ML backend unless the caller already chose one
+if not defined ML_BACKEND (
+    set GPU_NAMES=
+    for /f "usebackq delims=" %%a in (`powershell -NoProfile -Command "$names = Get-CimInstance Win32_VideoController | ForEach-Object { $_.Name }; if ($names) { $names -join '; ' }"`) do set GPU_NAMES=%%a
+    if not defined GPU_NAMES set GPU_NAMES=No dedicated GPU detected
+
+    set ML_BACKEND=cpu
+    set GPU_BACKEND_LABEL=CPU
+    echo !GPU_NAMES! | find /I "NVIDIA" >nul
+    if !errorlevel! equ 0 (
+        set ML_BACKEND=cuda
+        set GPU_BACKEND_LABEL=NVIDIA CUDA
+    ) else (
+        echo !GPU_NAMES! | findstr /I "AMD Radeon Intel Arc Iris Xe UHD" >nul
+        if !errorlevel! equ 0 (
+            set ML_BACKEND=directml
+            set GPU_BACKEND_LABEL=DirectML
+        )
+    )
+) else (
+    if /I "!ML_BACKEND!"=="cuda" set GPU_BACKEND_LABEL=NVIDIA CUDA
+    if /I "!ML_BACKEND!"=="directml" set GPU_BACKEND_LABEL=DirectML
+    if /I "!ML_BACKEND!"=="cpu" set GPU_BACKEND_LABEL=CPU
+    if not defined GPU_BACKEND_LABEL set GPU_BACKEND_LABEL=!ML_BACKEND!
+    if not defined GPU_NAMES set GPU_NAMES=Manual override
+)
+
+echo [INFO] GPU detection: !GPU_NAMES!
+echo [INFO] ML backend: !ML_BACKEND! (!GPU_BACKEND_LABEL!)
 
 :: Diagnostics
 echo [INFO] Python version:
-%PYTHON_CMD% --version
+"!VENV_PYTHON!" --version
 
 :: Start Web Server in Background
 echo [INFO] Starting FastAPI Web Server...
@@ -104,22 +138,28 @@ echo [INFO] Do not close this window until complete!
 
 :: Upgrade pip
 echo [INFO] Upgrading pip...
-%PYTHON_CMD% -m pip install --upgrade pip >nul 2>&1
+"!VENV_PYTHON!" -m pip install --upgrade pip >nul 2>&1
 
 :: Install Minimal Web Dependencies First
 echo [INFO] Installing Web Server...
-%PYTHON_CMD% -m pip install fastapi uvicorn python-multipart >nul
+"!VENV_PYTHON!" -m pip install fastapi uvicorn python-multipart >nul
 
-:: Force install Torch with CUDA 12.1
-echo [INFO] Ensuring PyTorch with CUDA support is installed...
-:: Uninstall any existing CPU-only torch to prevent conflicts
-%PYTHON_CMD% -m pip uninstall -y torch torchvision torchaudio >nul 2>&1
-:: Install explicitly from the PyTorch CUDA index
-%PYTHON_CMD% -m pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
+:: Install the ML runtime that matches the detected GPU backend
+echo [INFO] Ensuring ML runtime for !GPU_BACKEND_LABEL! is installed...
+"!VENV_PYTHON!" -m pip uninstall -y torch torchvision torchaudio torch-directml >nul 2>&1
+if /I "!ML_BACKEND!"=="cuda" (
+    "!VENV_PYTHON!" -m pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121 --cache-dir "%PIP_CACHE_DIR%"
+) else (
+    if /I "!ML_BACKEND!"=="directml" (
+        "!VENV_PYTHON!" -m pip install torch-directml --cache-dir "%PIP_CACHE_DIR%"
+    ) else (
+        "!VENV_PYTHON!" -m pip install torch torchvision torchaudio --cache-dir "%PIP_CACHE_DIR%"
+    )
+)
 
 :: Install Remaining Dependencies
 echo [INFO] Installing ML libraries (Diffusers, Transformers)...
-%PYTHON_CMD% -m pip install -r requirements.txt
+"!VENV_PYTHON!" -m pip install -r requirements.txt
 
 :: Alert server that dependencies are installed and it can load the model
 if exist "cache\tmp\ml_installed.flag" del "cache\tmp\ml_installed.flag"

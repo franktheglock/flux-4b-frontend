@@ -1,6 +1,5 @@
 # Python
 venv/
-.env
 __pycache__/
 *.py[cod]
 *.pyo
@@ -35,9 +34,6 @@ cache/pip/
 
 # Static build artifacts
 public/*.map
-
-# dotenv
-.env
 
 # Others
 *.sqlite3

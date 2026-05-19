@@ -23,12 +23,13 @@
     <div id="model-status-overlay" class="status-overlay hidden">
         <div class="status-card">
             <i data-feather="download-cloud" class="loading-icon"></i>
-            <h3>Downloading Model Assets</h3>
+        <h3 id="status-title">Downloading Model Assets</h3>
             <p id="status-message">Initializing...</p>
-            <div class="status-progress-bar">
+        <p id="status-hardware" class="status-hardware hidden"></p>
+        <div id="status-progress-bar" class="status-progress-bar">
                 <div id="status-progress-fill" class="progress-fill"></div>
             </div>
-            <div id="status-terminal" class="status-terminal">
+        <div id="status-terminal" class="status-terminal">
                 <div class="terminal-header">
                     <span>Live Console Output</span>
                     <div class="terminal-dots"><span></span><span></span><span></span></div>
@@ -37,6 +38,13 @@
                     Initializing logs...
                 </div>
             </div>
+        <div id="download-prompt" class="download-prompt hidden">
+          <div class="download-prompt-copy">
+            <p class="download-prompt-kicker">No cached model detected</p>
+            <p class="download-prompt-note">Choose a model to download. Fit estimates are rough and based on detected total VRAM.</p>
+          </div>
+          <div id="download-model-list" class="download-model-list"></div>
+        </div>
         </div>
     </div>
 
@@ -54,11 +62,11 @@
             <p class="eyebrow">Local image atelier</p>
             <h1><span class="gradient-text">FLUX.2</span>-klein-4B</h1>
             <div class="variant-row">
-              <span id="variant-badge" class="variant-badge">BF16</span>
+              <span id="variant-badge" class="variant-badge">Q8_0 GGUF</span>
               <label class="variant-selector" for="model-variant">
                 <span class="variant-selector-label">Variant</span>
                 <select id="model-variant" class="variant-select">
-                  <option value="bf16" selected>BF16</option>
+                  <option value="bf16">BF16</option>
                   <option value="fp8">FP8</option>
                   <option value="gguf-bf16">BF16 GGUF</option>
                   <option value="gguf-f16">F16 GGUF</option>
@@ -74,7 +82,7 @@
                   <option value="gguf-q5-k-m">Q5_K_M GGUF</option>
                   <option value="gguf-q5-k-s">Q5_K_S GGUF</option>
                   <option value="gguf-q6-k">Q6_K GGUF</option>
-                  <option value="gguf-q8-0">Q8_0 GGUF</option>
+                  <option value="gguf-q8-0" selected>Q8_0 GGUF</option>
                 </select>
               </label>
             </div>

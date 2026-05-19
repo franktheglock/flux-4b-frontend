@@ -1370,6 +1370,156 @@ input[type="range"]::-moz-range-thumb {
   animation: loading-infinite 2s infinite linear;
 }
 
+.status-hardware {
+  font-family: var(--font-mono);
+  font-size: 0.64rem;
+  color: var(--text-secondary);
+  line-height: 1.7;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  max-width: 46rem;
+}
+
+.download-prompt {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  text-align: left;
+}
+
+.download-prompt-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.download-prompt-kicker {
+  font-family: var(--font-mono);
+  font-size: 0.62rem;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--accent-bright);
+}
+
+.download-prompt-note {
+  font-size: 0.92rem;
+  color: var(--text-secondary);
+  line-height: 1.6;
+}
+
+.download-model-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px;
+}
+
+.download-model-card {
+  border: 1px solid var(--rule);
+  background: rgba(255, 255, 255, 0.015);
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.download-model-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.download-model-name {
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--text-primary);
+}
+
+.download-model-size {
+  font-size: 0.82rem;
+  color: var(--text-secondary);
+}
+
+.fit-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 86px;
+  padding: 4px 8px;
+  border: 1px solid var(--rule);
+  font-family: var(--font-mono);
+  font-size: 0.56rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.fit-badge.fits {
+  border-color: rgba(74, 222, 128, 0.35);
+  color: #86efac;
+  background: rgba(74, 222, 128, 0.08);
+}
+
+.fit-badge.tight {
+  border-color: rgba(245, 158, 11, 0.35);
+  color: var(--accent-pale);
+  background: rgba(245, 158, 11, 0.08);
+}
+
+.fit-badge.wont_fit {
+  border-color: rgba(248, 113, 113, 0.35);
+  color: #fca5a5;
+  background: rgba(239, 68, 68, 0.08);
+}
+
+.fit-badge.unknown {
+  color: var(--text-secondary);
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.download-model-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  color: var(--text-secondary);
+  font-size: 0.82rem;
+  line-height: 1.55;
+}
+
+.download-model-action {
+  border: 1px solid var(--rule-strong);
+  background: var(--accent-surface);
+  color: var(--text-primary);
+  padding: 10px 12px;
+  font-family: var(--font-mono);
+  font-size: 0.62rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+
+.download-model-action:hover:not(:disabled) {
+  border-color: var(--accent-bright);
+  background: rgba(245, 158, 11, 0.12);
+}
+
+.download-model-action:disabled {
+  opacity: 0.45;
+  cursor: wait;
+}
+
+@media (max-width: 780px) {
+  .status-card {
+    padding: 28px 20px;
+  }
+
+  .download-model-list {
+    grid-template-columns: 1fr;
+  }
+}
+
 /* ── Gallery item delete button ───────────── */
 .gallery-item {
   position: relative;
